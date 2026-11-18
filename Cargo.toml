@@ -1,0 +1,22 @@
+[package]
+name = "streamdeck-gui"
+version = "0.1.0"
+edition = "2024"
+authors = ["koresent"]
+description = "Fast, Wayland-native Stream Deck GUI and service written in Rust"
+
+[dependencies]
+eframe = { version = "0.31", default-features = true }
+egui = "0.31"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+ab_glyph = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+evdev = { version = "0.13" }
+hidapi = "2.6"
+elgato-streamdeck = "0.14"
+resvg = "0.50"
+rfd = "0.15"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
