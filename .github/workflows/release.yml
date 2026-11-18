@@ -1,0 +1,124 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release (Linux x86_64)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libwayland-dev \
+            libxkbcommon-dev \
+            libhidapi-dev \
+            libasound2-dev \
+            libssl-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test --workspace
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Strip release binary
+        run: strip target/release/streamdeck
+
+      - name: Prepare release archive
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          DATE=$(date -u +'%Y-%m-%d')
+
+          mkdir -p dist/package
+          cp target/release/streamdeck dist/package/
+          cp README.md LICENSE dist/package/
+
+          tar -czvf streamdeck-x86_64-unknown-linux-gnu.tar.gz -C dist/package .
+          sha256sum streamdeck-x86_64-unknown-linux-gnu.tar.gz > streamdeck-x86_64-unknown-linux-gnu.tar.gz.sha256
+
+          cp target/release/streamdeck streamdeck-linux-x86_64
+          sha256sum streamdeck-linux-x86_64 > streamdeck-linux-x86_64.sha256
+
+      - name: Determine release metadata
+        id: meta
+        if: github.event_name != 'pull_request'
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          DATE=$(date -u +'%Y-%m-%d')
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG_NAME="${{ github.ref_name }}"
+            echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+            echo "release_name=Release ${TAG_NAME}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
+            echo "body=Release ${TAG_NAME} (${SHORT_SHA})" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_name=nightly" >> "$GITHUB_OUTPUT"
+            echo "release_name=Nightly (${SHORT_SHA})" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
+            echo "body=Continuous rolling build from commit ${{ github.sha }} on branch main (${DATE})." >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update nightly git tag
+        if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/')
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f nightly HEAD
+          git push -f origin nightly
+
+      - name: Publish GitHub Release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag_name }}
+          name: ${{ steps.meta.outputs.release_name }}
+          body: ${{ steps.meta.outputs.body }}
+          prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
+          make_latest: ${{ steps.meta.outputs.make_latest }}
+          files: |
+            streamdeck-x86_64-unknown-linux-gnu.tar.gz
+            streamdeck-x86_64-unknown-linux-gnu.tar.gz.sha256
+            streamdeck-linux-x86_64
+            streamdeck-linux-x86_64.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trigger pkg-repo rebuild
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        run: |
+          gh api repos/koresent/pkg-repo/dispatches \
+            -f event_type=package-updated \
+            -F client_payload[package]=streamdeck \
+            -F client_payload[commit]=${{ github.sha }}
+        env:
+          GH_TOKEN: ${{ secrets.REPO_DISPATCH_TOKEN }}
