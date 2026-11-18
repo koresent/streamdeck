@@ -1,4 +1,4 @@
-# streamdeck-gui
+# streamdeck
 
 Fast Wayland GUI and service for Elgato Stream Deck devices written in Rust.
 

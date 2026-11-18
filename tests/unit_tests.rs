@@ -1,7 +1,7 @@
-use streamdeck_gui::config::{AppConfig, ButtonConfig, DeckState};
-use streamdeck_gui::device::DeviceInfo;
-use streamdeck_gui::input::wayland_uinput::{char_to_key_code, parse_key_code};
-use streamdeck_gui::render::ButtonRenderer;
+use streamdeck::config::{AppConfig, ButtonConfig, DeckState};
+use streamdeck::device::DeviceInfo;
+use streamdeck::input::wayland_uinput::{char_to_key_code, parse_key_code};
+use streamdeck::render::ButtonRenderer;
 
 #[test]
 fn test_config_serialization() {
